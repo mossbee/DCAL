@@ -24,7 +24,7 @@ model:
 # Data settings
 data:
   dataset_name: 'cub200'
-  data_root: '/kaggle/input/cub2002011/CUB_200_2011'
+  data_root: '/kaggle/input/cub2002011'
   batch_size: 16
   num_workers: 4
   image_size: [448, 448]  # Paper: 448x448 for training and test
