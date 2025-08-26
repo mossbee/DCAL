@@ -9,7 +9,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from typing import Tuple, Optional
-from ...utils.attention_rollout import get_patch_attention_rollout
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from utils.attention_rollout import get_patch_attention_rollout
 
 
 class GlobalLocalCrossAttention(nn.Module):
@@ -220,7 +223,7 @@ class GLCABlock(nn.Module):
         )
         
         # Stochastic depth
-        from .self_attention import DropPath
+        from models.attention.self_attention import DropPath
         self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
     
     def forward(self, x: torch.Tensor, accumulated_attention: torch.Tensor) -> torch.Tensor:

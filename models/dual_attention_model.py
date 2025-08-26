@@ -8,11 +8,14 @@ mechanisms to form the complete dual cross-attention architecture.
 import torch
 import torch.nn as nn
 from typing import Dict, Any, Optional, Tuple, List
-from .backbones.timm_wrapper import TimmBackbone
-from .attention.self_attention import TransformerBlock
-from .attention.glca import GLCABlock
-from .attention.pwca import PWCABlock
-from ..utils.attention_rollout import compute_attention_rollout
+from models.backbones.timm_wrapper import TimmBackbone
+from models.attention.self_attention import TransformerBlock
+from models.attention.glca import GLCABlock
+from models.attention.pwca import PWCABlock
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from utils.attention_rollout import compute_attention_rollout
 
 
 class DualAttentionModel(nn.Module):

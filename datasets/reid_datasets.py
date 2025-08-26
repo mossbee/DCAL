@@ -9,7 +9,10 @@ import glob
 import xml.etree.ElementTree as ET
 from typing import Dict, Any, List, Tuple
 from PIL import Image
-from .base_dataset import BaseDataset
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from datasets.base_dataset import BaseDataset
 
 
 class VeRi776Dataset(BaseDataset):

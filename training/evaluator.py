@@ -12,7 +12,10 @@ from typing import Dict, Any, List, Tuple, Optional
 import numpy as np
 from tqdm import tqdm
 import logging
-from ..utils.metrics import (
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from utils.metrics import (
     compute_accuracy, compute_reid_metrics, compute_class_accuracy, 
     compute_confusion_matrix, MetricTracker
 )

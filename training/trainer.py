@@ -14,9 +14,12 @@ from tqdm import tqdm
 import os
 import time
 import json
-from ..utils.losses import UncertaintyWeightedLoss, TripletLoss, CombinedLoss
-from ..utils.metrics import compute_accuracy, MetricTracker
-from ..models.attention.pwca import PairSampler
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from utils.losses import UncertaintyWeightedLoss, TripletLoss, CombinedLoss
+from utils.metrics import compute_accuracy, MetricTracker
+from models.attention.pwca import PairSampler
 
 
 class DualAttentionTrainer:

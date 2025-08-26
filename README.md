@@ -69,6 +69,8 @@ python scripts/train_fgvc.py --config configs/fgvc/cub200.yaml
 python scripts/train_reid.py --config configs/reid/veri776.yaml
 ```
 
+
+
 ## Requirements
 
 See `requirements.txt` for detailed dependencies.

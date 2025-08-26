@@ -226,7 +226,7 @@ class PWCABlock(nn.Module):
         )
         
         # Stochastic depth
-        from .self_attention import DropPath
+        from models.attention.self_attention import DropPath
         self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
     
     def forward(self, x1: torch.Tensor, x2: torch.Tensor) -> torch.Tensor:
