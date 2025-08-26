@@ -13,12 +13,16 @@ from torch.utils.data import DataLoader
 import sys
 import os
 import logging
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from models import DualAttentionModel
-from datasets import CUB200Dataset
-from training import DualAttentionEvaluator
-from utils import load_config as load_yaml_config
+# Add the project root to Python path to avoid conflicts with system packages
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
+from models.dual_attention_model import DualAttentionModel
+from datasets.fgvc_datasets import CUB200Dataset
+from training.evaluator import DualAttentionEvaluator
+from utils.config import load_config as load_yaml_config
 
 
 def load_config(config_path: str) -> dict:

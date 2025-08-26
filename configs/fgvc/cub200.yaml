@@ -1,61 +1,41 @@
 # CUB-200-2011 Fine-Grained Visual Categorization Configuration
 
-# Dataset settings
-dataset:
-  name: 'cub200'
-  root_dir: '/kaggle/input/cub2002011/CUB_200_2011'
-  num_classes: 200
-  image_size: [448, 448]
-  crop_size: [448, 448]
-  resize_size: [550, 550]
+# Task and experiment settings
+task_type: 'fgvc'
+exp_name: 'cub200_dual_attention'
+save_dir: './experiments/fgvc'
+device: 'cuda'
+seed: 42
 
 # Model settings
 model:
-  backbone: 'vit_base_r50_s16_224.orig_in21k'
-  pretrained: true
+  backbone_name: 'deit_small_patch16_224'  # Use DeiT as per paper
+  num_classes: 200
   embed_dim: 384
   num_heads: 6
   num_sa_blocks: 12
   num_glca_blocks: 1
   num_pwca_blocks: 12
-  top_k_ratio: 0.1  # R=10% for GLCA
-
-# Training settings
-training:
-  num_epochs: 100
-  batch_size: 16
-  learning_rate: 0.0005
-  weight_decay: 0.05
-  optimizer: 'adam'
-  scheduler: 'cosine'
+  top_k_ratio: 0.1  # R=10% for GLCA as per paper
   drop_rate: 0.0
   drop_path_rate: 0.1
+  img_size: 224
 
-# Data loader settings
-train_loader:
+# Data settings
+data:
+  dataset_name: 'cub200'
+  data_root: '/kaggle/input/cub2002011/CUB_200_2011'
   batch_size: 16
-  shuffle: true
   num_workers: 4
-  pin_memory: true
+  image_size: [448, 448]  # Paper: 448x448 for training and test
 
-val_loader:
-  batch_size: 32
-  shuffle: false
-  num_workers: 4
-  pin_memory: true
+# Training settings  
+training:
+  num_epochs: 100
+  learning_rate: 0.0005  # Paper uses lr_scaled = 5e-4/512 * batch_size
+  weight_decay: 0.05
+  optimizer: 'adam'  # Paper uses Adam
+  scheduler: 'cosine'
+  warmup_epochs: 5
+  min_lr: 1e-6
 
-test_loader:
-  batch_size: 32
-  shuffle: false
-  num_workers: 4
-  pin_memory: true
-
-# Trainer settings
-trainer:
-  log_interval: 100
-  eval_interval: 1
-  save_interval: 10
-
-# Paths
-save_dir: './checkpoints/cub200'
-log_dir: './logs/cub200'

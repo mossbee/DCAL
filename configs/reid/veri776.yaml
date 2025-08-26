@@ -1,71 +1,41 @@
 # VeRi-776 Vehicle Re-Identification Configuration
 
-# Dataset settings
-dataset:
-  name: 'veri776'
-  root_dir: '/path/to/VeRi'
-  num_classes: 576  # Training vehicles (776 total - 200 test)
-  image_size: [256, 256]  # Vehicle datasets use square images
-  
+# Task and experiment settings
+task_type: 'reid'
+exp_name: 'veri776_dual_attention'
+save_dir: './experiments/reid'
+device: 'cuda'
+seed: 42
+
 # Model settings
 model:
-  backbone: 'vit_base_patch16_224'
-  pretrained: true
-  embed_dim: 768
-  num_heads: 12
+  backbone_name: 'deit_small_patch16_224'  # Use DeiT as per paper
+  num_classes: 576  # Training vehicles (776 total - 200 test)
+  embed_dim: 384
+  num_heads: 6
   num_sa_blocks: 12
   num_glca_blocks: 1
   num_pwca_blocks: 12
-  top_k_ratio: 0.3  # R=30% for GLCA
+  top_k_ratio: 0.3  # R=30% for GLCA as per paper
+  drop_rate: 0.0
+  drop_path_rate: 0.1
+  img_size: 224
 
-# Training settings
+# Data settings
+data:
+  dataset_name: 'veri776'
+  data_root: '/path/to/VeRi'
+  batch_size: 64
+  num_workers: 4
+  image_size: [256, 256]  # Paper: 256x256 for vehicle datasets
+
+# Training settings (matching paper exactly)
 training:
   num_epochs: 120
-  batch_size: 64
-  learning_rate: 0.008
-  weight_decay: 0.0001
-  optimizer: 'sgd'
-  momentum: 0.9
+  learning_rate: 0.008  # Paper: 0.008 for Re-ID
+  weight_decay: 0.0001  # Paper: 1e-4
+  optimizer: 'sgd'  # Paper uses SGD for Re-ID
   scheduler: 'cosine'
+  momentum: 0.9
   num_instances: 4  # 4 images per vehicle ID
-
-# Loss settings
-loss:
-  cross_entropy_weight: 1.0
-  triplet_weight: 1.0
   triplet_margin: 0.3
-
-# Data loader settings
-train_loader:
-  batch_size: 64
-  shuffle: true
-  num_workers: 8
-  pin_memory: true
-
-val_loader:
-  batch_size: 128
-  shuffle: false
-  num_workers: 8
-  pin_memory: true
-
-query_loader:
-  batch_size: 128
-  shuffle: false
-  num_workers: 8
-  pin_memory: true
-
-gallery_loader:
-  batch_size: 128
-  shuffle: false
-  num_workers: 8
-  pin_memory: true
-
-# Trainer settings
-trainer:
-  log_interval: 100
-  eval_interval: 10
-  save_interval: 20
-
-# Paths
-save_dir: './checkpoints/veri776'
-log_dir: './logs/veri776'

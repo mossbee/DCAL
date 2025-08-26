@@ -102,16 +102,8 @@ class DualAttentionModel(nn.Module):
         ])
         
         # Pair-Wise Cross-Attention branch (training only, shares weights with SA)
-        self.pwca_blocks = nn.ModuleList([
-            PWCABlock(
-                dim=self.embed_dim,
-                num_heads=num_heads,
-                drop=drop_rate,
-                attn_drop=drop_rate,
-                drop_path=drop_path_rate * (i / max(1, num_pwca_blocks - 1))
-            )
-            for i in range(num_pwca_blocks)
-        ])
+        # According to paper: "The PWCA branch shares weights with the SA branch"
+        # So we don't create separate PWCA blocks, we reuse SA blocks
         
         # Classification heads for different branches
         self.sa_head = self._create_classifier_head(task_type)
@@ -232,9 +224,43 @@ class DualAttentionModel(nn.Module):
         return x
     
     def _forward_pwca_branch(self, x1: torch.Tensor, x2: torch.Tensor) -> torch.Tensor:
-        """Forward pass through PWCA branch."""
-        for block in self.pwca_blocks:
-            x1 = block(x1, x2)
+        """
+        Forward pass through PWCA branch using shared SA weights.
+        
+        According to paper: "The PWCA branch shares weights with the SA branch"
+        We use SA blocks but with PWCA attention computation.
+        """
+        # Import here to avoid circular imports
+        from models.attention.pwca import PairWiseCrossAttention
+        
+        for i, sa_block in enumerate(self.sa_blocks):
+            # Create PWCA attention using SA block's parameters
+            pwca_attention = PairWiseCrossAttention(
+                dim=sa_block.attn.dim,
+                num_heads=sa_block.attn.num_heads,
+                qkv_bias=sa_block.attn.qkv_bias,
+                attn_drop=sa_block.attn.attn_drop.p,
+                proj_drop=sa_block.attn.proj_drop.p
+            )
+            
+            # Copy weights from SA block
+            pwca_attention.qkv.weight.data = sa_block.attn.qkv.weight.data.clone()
+            if sa_block.attn.qkv.bias is not None:
+                pwca_attention.qkv.bias.data = sa_block.attn.qkv.bias.data.clone()
+            pwca_attention.proj.weight.data = sa_block.attn.proj.weight.data.clone()
+            if sa_block.attn.proj.bias is not None:
+                pwca_attention.proj.bias.data = sa_block.attn.proj.bias.data.clone()
+            
+            # Apply layer norm
+            x1 = sa_block.norm1(x1)
+            x2 = sa_block.norm1(x2)
+            
+            # PWCA attention
+            x1 = x1 + sa_block.drop_path(pwca_attention(x1, x2))
+            
+            # FFN (same as SA)
+            x1 = x1 + sa_block.drop_path(sa_block.mlp(sa_block.norm2(x1)))
+        
         return x1
     
     def _compute_attention_rollout(self, attention_weights: List[torch.Tensor]) -> torch.Tensor:
