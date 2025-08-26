@@ -1,0 +1,61 @@
+# CUB-200-2011 Fine-Grained Visual Categorization Configuration
+
+# Dataset settings
+dataset:
+  name: 'cub200'
+  root_dir: '/path/to/CUB_200_2011'
+  num_classes: 200
+  image_size: [448, 448]
+  crop_size: [448, 448]
+  resize_size: [550, 550]
+
+# Model settings
+model:
+  backbone: 'deit_small_patch16_224'
+  pretrained: true
+  embed_dim: 384
+  num_heads: 6
+  num_sa_blocks: 12
+  num_glca_blocks: 1
+  num_pwca_blocks: 12
+  top_k_ratio: 0.1  # R=10% for GLCA
+
+# Training settings
+training:
+  num_epochs: 100
+  batch_size: 16
+  learning_rate: 0.0005
+  weight_decay: 0.05
+  optimizer: 'adam'
+  scheduler: 'cosine'
+  drop_rate: 0.0
+  drop_path_rate: 0.1
+
+# Data loader settings
+train_loader:
+  batch_size: 16
+  shuffle: true
+  num_workers: 4
+  pin_memory: true
+
+val_loader:
+  batch_size: 32
+  shuffle: false
+  num_workers: 4
+  pin_memory: true
+
+test_loader:
+  batch_size: 32
+  shuffle: false
+  num_workers: 4
+  pin_memory: true
+
+# Trainer settings
+trainer:
+  log_interval: 100
+  eval_interval: 1
+  save_interval: 10
+
+# Paths
+save_dir: './checkpoints/cub200'
+log_dir: './logs/cub200'

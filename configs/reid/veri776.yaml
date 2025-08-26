@@ -1,0 +1,71 @@
+# VeRi-776 Vehicle Re-Identification Configuration
+
+# Dataset settings
+dataset:
+  name: 'veri776'
+  root_dir: '/path/to/VeRi'
+  num_classes: 576  # Training vehicles (776 total - 200 test)
+  image_size: [256, 256]  # Vehicle datasets use square images
+  
+# Model settings
+model:
+  backbone: 'vit_base_patch16_224'
+  pretrained: true
+  embed_dim: 768
+  num_heads: 12
+  num_sa_blocks: 12
+  num_glca_blocks: 1
+  num_pwca_blocks: 12
+  top_k_ratio: 0.3  # R=30% for GLCA
+
+# Training settings
+training:
+  num_epochs: 120
+  batch_size: 64
+  learning_rate: 0.008
+  weight_decay: 0.0001
+  optimizer: 'sgd'
+  momentum: 0.9
+  scheduler: 'cosine'
+  num_instances: 4  # 4 images per vehicle ID
+
+# Loss settings
+loss:
+  cross_entropy_weight: 1.0
+  triplet_weight: 1.0
+  triplet_margin: 0.3
+
+# Data loader settings
+train_loader:
+  batch_size: 64
+  shuffle: true
+  num_workers: 8
+  pin_memory: true
+
+val_loader:
+  batch_size: 128
+  shuffle: false
+  num_workers: 8
+  pin_memory: true
+
+query_loader:
+  batch_size: 128
+  shuffle: false
+  num_workers: 8
+  pin_memory: true
+
+gallery_loader:
+  batch_size: 128
+  shuffle: false
+  num_workers: 8
+  pin_memory: true
+
+# Trainer settings
+trainer:
+  log_interval: 100
+  eval_interval: 10
+  save_interval: 20
+
+# Paths
+save_dir: './checkpoints/veri776'
+log_dir: './logs/veri776'
