@@ -3,7 +3,7 @@
 # Dataset settings
 dataset:
   name: 'cub200'
-  root_dir: '/path/to/CUB_200_2011'
+  root_dir: '/kaggle/input/cub2002011/CUB_200_2011'
   num_classes: 200
   image_size: [448, 448]
   crop_size: [448, 448]
@@ -11,7 +11,7 @@ dataset:
 
 # Model settings
 model:
-  backbone: 'deit_small_patch16_224'
+  backbone: 'vit_base_r50_s16_224.orig_in21k'
   pretrained: true
   embed_dim: 384
   num_heads: 6
