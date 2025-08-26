@@ -45,28 +45,38 @@ def load_config(config_path: str) -> dict:
             return yaml.safe_load(f)
 
 
-def create_dataset(config: dict) -> tuple:
+def create_dataset(config) -> tuple:
     """
     Create train and validation datasets based on configuration.
     
     Args:
-        config: Configuration dictionary
+        config: Configuration object (ExperimentConfig)
         
     Returns:
         Tuple of (train_dataset, val_dataset)
     """
-    data_config = config.get('data', config)
+    # Handle both dict and dataclass config formats
+    if hasattr(config, 'data'):
+        data_config = config.data
+    else:
+        data_config = config.get('data', config)
+    
+    # Extract data_root with proper attribute/key access
+    if hasattr(data_config, 'data_root'):
+        data_root = data_config.data_root
+    else:
+        data_root = data_config['data_root']
     
     # Create training dataset
     train_dataset = CUB200Dataset(
-        root_dir=data_config['data_root'],
+        root_dir=data_root,
         split='train',
         transform=None  # Will use default transforms
     )
     
     # Create validation dataset (using test split for now)
     val_dataset = CUB200Dataset(
-        root_dir=data_config['data_root'],
+        root_dir=data_root,
         split='test',
         transform=None  # Will use default transforms
     )
@@ -76,54 +86,82 @@ def create_dataset(config: dict) -> tuple:
     return train_dataset, val_dataset
 
 
-def create_model(config: dict) -> nn.Module:
+def create_model(config) -> nn.Module:
     """
     Create dual attention model based on configuration.
     
     Args:
-        config: Configuration dictionary
+        config: Configuration object (ExperimentConfig)
         
     Returns:
         Initialized model
     """
-    model_config = config.get('model', config)
+    # Handle both dict and dataclass config formats
+    if hasattr(config, 'model'):
+        model_config = config.model
+    else:
+        model_config = config.get('model', config)
+    
+    # Helper function to get attribute or key value
+    def get_value(obj, key, default):
+        if hasattr(obj, key):
+            return getattr(obj, key)
+        elif isinstance(obj, dict):
+            return obj.get(key, default)
+        else:
+            return default
     
     model = DualAttentionModel(
-        backbone_name=model_config.get('backbone_name', 'deit_small_patch16_224'),
-        num_classes=model_config.get('num_classes', 200),
+        backbone_name=get_value(model_config, 'backbone_name', 'deit_small_patch16_224'),
+        num_classes=get_value(model_config, 'num_classes', 200),
         task_type='fgvc',
-        num_sa_blocks=model_config.get('num_sa_blocks', 12),
-        num_glca_blocks=model_config.get('num_glca_blocks', 1),
-        num_pwca_blocks=model_config.get('num_pwca_blocks', 12),
-        embed_dim=model_config.get('embed_dim', 384),
-        num_heads=model_config.get('num_heads', 6),
-        top_k_ratio=model_config.get('top_k_ratio', 0.1),
-        drop_rate=model_config.get('drop_rate', 0.0),
-        drop_path_rate=model_config.get('drop_path_rate', 0.1),
-        img_size=model_config.get('img_size', 224)
+        num_sa_blocks=get_value(model_config, 'num_sa_blocks', 12),
+        num_glca_blocks=get_value(model_config, 'num_glca_blocks', 1),
+        num_pwca_blocks=get_value(model_config, 'num_pwca_blocks', 12),
+        embed_dim=get_value(model_config, 'embed_dim', 384),
+        num_heads=get_value(model_config, 'num_heads', 6),
+        top_k_ratio=get_value(model_config, 'top_k_ratio', 0.1),
+        drop_rate=get_value(model_config, 'drop_rate', 0.0),
+        drop_path_rate=get_value(model_config, 'drop_path_rate', 0.1),
+        img_size=get_value(model_config, 'img_size', 224)
     )
     
-    print(f"Created model: {model_config.get('backbone_name', 'deit_small_patch16_224')} with {model_config.get('num_classes', 200)} classes")
+    backbone_name = get_value(model_config, 'backbone_name', 'deit_small_patch16_224')
+    num_classes = get_value(model_config, 'num_classes', 200)
+    print(f"Created model: {backbone_name} with {num_classes} classes")
     
     return model
 
 
-def create_optimizer(model: nn.Module, config: dict) -> torch.optim.Optimizer:
+def create_optimizer(model: nn.Module, config) -> torch.optim.Optimizer:
     """
     Create optimizer based on configuration.
     
     Args:
         model: Model to optimize
-        config: Configuration dictionary
+        config: Configuration object (ExperimentConfig)
         
     Returns:
         Configured optimizer
     """
-    training_config = config.get('training', config)
+    # Handle both dict and dataclass config formats
+    if hasattr(config, 'training'):
+        training_config = config.training
+    else:
+        training_config = config.get('training', config)
     
-    optimizer_name = training_config.get('optimizer', 'adamw').lower()
-    learning_rate = training_config.get('learning_rate', 1e-4)
-    weight_decay = training_config.get('weight_decay', 1e-4)
+    # Helper function to get attribute or key value
+    def get_value(obj, key, default):
+        if hasattr(obj, key):
+            return getattr(obj, key)
+        elif isinstance(obj, dict):
+            return obj.get(key, default)
+        else:
+            return default
+    
+    optimizer_name = get_value(training_config, 'optimizer', 'adamw').lower()
+    learning_rate = get_value(training_config, 'learning_rate', 1e-4)
+    weight_decay = get_value(training_config, 'weight_decay', 1e-4)
     
     if optimizer_name == 'adamw':
         optimizer = torch.optim.AdamW(
@@ -169,8 +207,14 @@ def main():
     
     # Load configuration
     config = load_config(args.config)
-    data_config = config.get('data', config)
-    training_config = config.get('training', config)
+    
+    # Handle both dict and dataclass config formats
+    if hasattr(config, 'data'):
+        data_config = config.data
+        training_config = config.training
+    else:
+        data_config = config.get('data', config)
+        training_config = config.get('training', config)
     
     # Set device
     device = torch.device(f'cuda:{args.gpu}' if torch.cuda.is_available() else 'cpu')
@@ -180,8 +224,16 @@ def main():
     train_dataset, val_dataset = create_dataset(config)
     
     # Create data loaders with default settings
-    batch_size = data_config.get('batch_size', 32)
-    num_workers = data_config.get('num_workers', 4)
+    def get_value(obj, key, default):
+        if hasattr(obj, key):
+            return getattr(obj, key)
+        elif isinstance(obj, dict):
+            return obj.get(key, default)
+        else:
+            return default
+    
+    batch_size = get_value(data_config, 'batch_size', 32)
+    num_workers = get_value(data_config, 'num_workers', 4)
     
     train_loader = DataLoader(
         train_dataset, 
@@ -206,29 +258,29 @@ def main():
     optimizer = create_optimizer(model, config)
     
     # Create scheduler
-    scheduler_type = training_config.get('scheduler', 'cosine')
-    num_epochs = training_config.get('num_epochs', 100)
+    scheduler_type = get_value(training_config, 'scheduler', 'cosine')
+    num_epochs = get_value(training_config, 'num_epochs', 100)
     
     if scheduler_type == 'cosine':
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
             optimizer, 
             T_max=num_epochs,
-            eta_min=training_config.get('min_lr', 1e-6)
+            eta_min=get_value(training_config, 'min_lr', 1e-6)
         )
     elif scheduler_type == 'multistep':
         scheduler = torch.optim.lr_scheduler.MultiStepLR(
             optimizer,
-            milestones=training_config.get('milestones', [30, 60, 90]),
-            gamma=training_config.get('gamma', 0.1)
+            milestones=get_value(training_config, 'milestones', [30, 60, 90]),
+            gamma=get_value(training_config, 'gamma', 0.1)
         )
     else:
         scheduler = None
     
     # Create trainer
     trainer_kwargs = {
-        'log_interval': training_config.get('log_interval', 100),
-        'eval_interval': training_config.get('eval_interval', 1),
-        'save_interval': training_config.get('save_interval', 10)
+        'log_interval': get_value(training_config, 'log_interval', 100),
+        'eval_interval': get_value(training_config, 'eval_interval', 1),
+        'save_interval': get_value(training_config, 'save_interval', 10)
     }
     
     trainer = DualAttentionTrainer(
@@ -248,7 +300,7 @@ def main():
         logger.info(f"Resumed training from: {args.resume}")
     
     # Start training
-    save_dir = config.get('save_dir', './experiments/fgvc')
+    save_dir = get_value(config, 'save_dir', './experiments/fgvc')
     history = trainer.train(
         num_epochs=num_epochs,
         save_dir=save_dir

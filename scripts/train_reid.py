@@ -45,7 +45,7 @@ def load_config(config_path: str) -> dict:
             return yaml.safe_load(f)
 
 
-def create_dataset(config: dict) -> tuple:
+def create_dataset(config) -> tuple:
     """
     Create train and validation datasets based on configuration.
     
@@ -76,7 +76,7 @@ def create_dataset(config: dict) -> tuple:
     return train_dataset, val_dataset
 
 
-def create_model(config: dict) -> nn.Module:
+def create_model(config) -> nn.Module:
     """
     Create dual attention model based on configuration.
     
@@ -108,7 +108,7 @@ def create_model(config: dict) -> nn.Module:
     return model
 
 
-def create_optimizer(model: nn.Module, config: dict) -> torch.optim.Optimizer:
+def create_optimizer(model: nn.Module, config) -> torch.optim.Optimizer:
     """
     Create optimizer based on configuration.
     
