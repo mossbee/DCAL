@@ -149,8 +149,10 @@ class GlobalLocalCrossAttention(nn.Module):
         selected_indices = torch.cat([cls_indices, patch_indices], dim=1)  # (B, K+1)
         
         # Select queries for top-k positions
-        batch_indices = torch.arange(B).unsqueeze(1).expand(-1, k + 1)  # (B, K+1)
-        selected_q = q[batch_indices, :, selected_indices]  # (B, num_heads, K+1, head_dim)
+        # q has shape (B, num_heads, N, head_dim), selected_indices has shape (B, K+1)
+        # Use gather to select along the sequence dimension
+        selected_indices_expanded = selected_indices.unsqueeze(1).unsqueeze(-1).expand(B, num_heads, k + 1, self.head_dim)  # (B, num_heads, K+1, head_dim)
+        selected_q = torch.gather(q, 2, selected_indices_expanded)  # (B, num_heads, K+1, head_dim)
         
         return selected_q, selected_indices
     

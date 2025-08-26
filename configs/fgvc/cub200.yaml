@@ -19,7 +19,7 @@ model:
   top_k_ratio: 0.1  # R=10% for GLCA as per paper
   drop_rate: 0.0
   drop_path_rate: 0.1
-  img_size: 224
+  img_size: 448
 
 # Data settings
 data:

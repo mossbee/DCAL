@@ -235,18 +235,32 @@ class DualAttentionModel(nn.Module):
         
         for i, sa_block in enumerate(self.sa_blocks):
             # Create PWCA attention using SA block's parameters
+            qkv_bias = sa_block.attn.qkv.bias is not None
             pwca_attention = PairWiseCrossAttention(
                 dim=sa_block.attn.dim,
                 num_heads=sa_block.attn.num_heads,
-                qkv_bias=sa_block.attn.qkv_bias,
+                qkv_bias=qkv_bias,
                 attn_drop=sa_block.attn.attn_drop.p,
                 proj_drop=sa_block.attn.proj_drop.p
             )
             
-            # Copy weights from SA block
-            pwca_attention.qkv.weight.data = sa_block.attn.qkv.weight.data.clone()
+            # Copy weights from SA block (SA uses combined qkv, PWCA uses separate q/k/v projections)
+            qkv_weight = sa_block.attn.qkv.weight.data  # Shape: (3*dim, dim)
+            dim = sa_block.attn.dim
+            
+            # Split QKV weights and copy to separate projections
+            pwca_attention.q_proj.weight.data = qkv_weight[:dim].clone()
+            pwca_attention.k_proj.weight.data = qkv_weight[dim:2*dim].clone()
+            pwca_attention.v_proj.weight.data = qkv_weight[2*dim:3*dim].clone()
+            
+            # Copy biases if they exist
             if sa_block.attn.qkv.bias is not None:
-                pwca_attention.qkv.bias.data = sa_block.attn.qkv.bias.data.clone()
+                qkv_bias = sa_block.attn.qkv.bias.data
+                pwca_attention.q_proj.bias.data = qkv_bias[:dim].clone()
+                pwca_attention.k_proj.bias.data = qkv_bias[dim:2*dim].clone()
+                pwca_attention.v_proj.bias.data = qkv_bias[2*dim:3*dim].clone()
+            
+            # Copy projection weights
             pwca_attention.proj.weight.data = sa_block.attn.proj.weight.data.clone()
             if sa_block.attn.proj.bias is not None:
                 pwca_attention.proj.bias.data = sa_block.attn.proj.bias.data.clone()
@@ -274,10 +288,12 @@ class DualAttentionModel(nn.Module):
             Accumulated attention tensor of shape (B, N, N)
         """
         if not attention_weights:
-            # Fallback: return identity matrix
-            B = attention_weights[0].size(0) if attention_weights else 1
-            N = attention_weights[0].size(-1) if attention_weights else 197  # 224x224 patches + CLS
-            device = attention_weights[0].device if attention_weights else torch.device('cpu')
+            # This should not happen - create identity as fallback but log warning
+            print(f"Warning: No attention weights collected, using identity matrix fallback")
+            # Use backbone to get proper dimensions
+            N = self.backbone.num_patches + 1  # patches + CLS token
+            B = 1  # Will be corrected when actually used
+            device = next(self.parameters()).device
             return torch.eye(N, device=device).unsqueeze(0).repeat(B, 1, 1)
         
         return compute_attention_rollout(
