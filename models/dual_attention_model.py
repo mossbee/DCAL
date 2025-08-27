@@ -20,23 +20,83 @@ from utils.attention_rollout import compute_attention_rollout
 
 class DualAttentionModel(nn.Module):
     """
-    Complete dual cross-attention model.
+    Dual Cross-Attention Learning Model for Fine-Grained Visual Recognition.
     
-    Integrates backbone with self-attention, global-local cross-attention,
-    and pair-wise cross-attention for fine-grained recognition tasks.
+    This implements the complete architecture from "Dual Cross-Attention Learning for 
+    Fine-Grained Visual Categorization and Object Re-Identification".
     
-    Architecture:
-    - Backbone (timm ViT/DeiT) for initial feature extraction
-    - Self-Attention branch (L=12 SA blocks) 
-    - Global-Local Cross-Attention branch (M=1 GLCA block)
-    - Pair-Wise Cross-Attention branch (T=12 PWCA blocks, training only)
+    **Architecture Overview:**
+    The model extends Vision Transformer with two novel cross-attention mechanisms:
+    1. **Global-Local Cross-Attention (GLCA)**: Enhances spatial discrimination
+    2. **Pair-Wise Cross-Attention (PWCA)**: Provides attention regularization
+    
+    **Complete Pipeline:**
+    Input Image → Backbone (ViT/DeiT) → Three Parallel Branches:
+    ├── Self-Attention Branch (L=12 SA blocks) → SA Classifier
+    ├── GLCA Branch (M=1 GLCA block) → GLCA Classifier  
+    └── PWCA Branch (T=12 PWCA blocks, training only) → PWCA Classifier
+    
+    **Key Innovations:**
+    
+    1. **Attention Rollout Integration:**
+       - Computes Ŝᵢ = S̄ᵢ ⊗ S̄ᵢ₋₁ ⊗ ... ⊗ S̄₁ across SA layers
+       - Tracks information flow from input patches to final representation
+       - Used by GLCA to identify discriminative regions
+    
+    2. **Global-Local Cross-Attention:**
+       - Uses attention rollout to select top-k most important patches
+       - Computes cross-attention between selected queries and global key-values
+       - Enhances fine-grained spatial discrimination
+    
+    3. **Pair-Wise Cross-Attention (Training Only):**
+       - Introduces controlled distraction during training
+       - Target image queries attend to combined target+distractor key-values
+       - Regularizes attention learning and prevents overfitting
+    
+    4. **Uncertainty-Weighted Multi-Task Learning:**
+       - Automatically balances losses from three attention branches
+       - Uses learnable uncertainty parameters (no manual tuning needed)
+       - Adapts loss weights based on task difficulty during training
+    
+    **Task-Specific Adaptations:**
+    
+    **Fine-Grained Visual Categorization (FGVC):**
+    - Input: 448×448 images (high resolution for fine details)
+    - Top-k ratio: R=10% (focus on most discriminative regions)
+    - Output: Classification logits for species/categories
+    - Evaluation: Top-1 and Top-5 accuracy
+    
+    **Re-Identification (Re-ID):**
+    - Input: 256×256 images (person/vehicle recognition)
+    - Top-k ratio: R=30% (broader spatial coverage)
+    - Output: Feature embeddings + classification logits
+    - Evaluation: mAP and CMC metrics
+    - Final features: Concatenated SA + GLCA CLS tokens
+    
+    **Training Configuration:**
+    - Self-Attention: L=12 transformer blocks (shared with PWCA)
+    - GLCA: M=1 block (applied after SA rollout computation)
+    - PWCA: T=12 blocks (shares weights with SA, training only)
+    - Loss weighting: Automatic via uncertainty parameters
+    
+    **Inference Efficiency:**
+    - PWCA branch disabled (no computational overhead)
+    - Attention rollout cached for repeated patterns
+    - Only SA and GLCA branches active
+    
+    **Key Benefits:**
+    1. **Fine-grained Recognition**: Better discrimination of subtle differences
+    2. **Spatial Awareness**: GLCA focuses on discriminative regions
+    3. **Regularization**: PWCA prevents overfitting during training
+    4. **Automatic Tuning**: Uncertainty weighting eliminates hyperparameter search
+    5. **Task Flexibility**: Supports both classification and re-identification
     """
     
     def __init__(self, backbone_name: str, num_classes: int, task_type: str = 'fgvc',
                  num_sa_blocks: int = 12, num_glca_blocks: int = 1, num_pwca_blocks: int = 12,
                  embed_dim: int = 768, num_heads: int = 12, top_k_ratio: float = 0.1,
                  drop_rate: float = 0.0, drop_path_rate: float = 0.1, img_size: int = 224,
-                 **kwargs):
+                 cache_attention_rollout: bool = True, **kwargs):
         """
         Initialize dual attention model.
         
@@ -53,6 +113,7 @@ class DualAttentionModel(nn.Module):
             drop_rate: Dropout rate
             drop_path_rate: Stochastic depth rate
             img_size: Input image size
+            cache_attention_rollout: Whether to cache attention rollout for efficiency
             **kwargs: Additional arguments
         """
         super().__init__()
@@ -62,6 +123,12 @@ class DualAttentionModel(nn.Module):
         self.embed_dim = embed_dim
         self.num_heads = num_heads
         self.top_k_ratio = top_k_ratio
+        self.cache_attention_rollout = cache_attention_rollout
+        
+        # Attention rollout cache for efficiency
+        self._attention_cache = {}
+        self._cache_hits = 0
+        self._cache_misses = 0
         
         # Backbone for initial feature extraction
         self.backbone = TimmBackbone(
@@ -228,58 +295,83 @@ class DualAttentionModel(nn.Module):
         Forward pass through PWCA branch using shared SA weights.
         
         According to paper: "The PWCA branch shares weights with the SA branch"
-        We use SA blocks but with PWCA attention computation.
-        """
-        # Import here to avoid circular imports
-        from models.attention.pwca import PairWiseCrossAttention
+        This implementation directly uses SA block parameters without weight copying
+        for better efficiency.
         
-        for i, sa_block in enumerate(self.sa_blocks):
-            # Create PWCA attention using SA block's parameters
-            qkv_bias = sa_block.attn.qkv.bias is not None
-            pwca_attention = PairWiseCrossAttention(
-                dim=sa_block.attn.dim,
-                num_heads=sa_block.attn.num_heads,
-                qkv_bias=qkv_bias,
-                attn_drop=sa_block.attn.attn_drop.p,
-                proj_drop=sa_block.attn.proj_drop.p
-            )
+        Args:
+            x1: Target image embeddings of shape (B, N, D)
+            x2: Distractor image embeddings of shape (B, N, D)
             
-            # Copy weights from SA block (SA uses combined qkv, PWCA uses separate q/k/v projections)
-            qkv_weight = sa_block.attn.qkv.weight.data  # Shape: (3*dim, dim)
-            dim = sa_block.attn.dim
+        Returns:
+            Output tensor for target image of shape (B, N, D)
+        """
+        for sa_block in self.sa_blocks:
+            # Apply layer normalization (shared with SA)
+            x1_norm = sa_block.norm1(x1)
+            x2_norm = sa_block.norm1(x2)
             
-            # Split QKV weights and copy to separate projections
-            pwca_attention.q_proj.weight.data = qkv_weight[:dim].clone()
-            pwca_attention.k_proj.weight.data = qkv_weight[dim:2*dim].clone()
-            pwca_attention.v_proj.weight.data = qkv_weight[2*dim:3*dim].clone()
+            # Compute PWCA attention using SA block's attention parameters directly
+            pwca_output = self._compute_pwca_attention(sa_block.attn, x1_norm, x2_norm)
             
-            # Copy biases if they exist
-            if sa_block.attn.qkv.bias is not None:
-                qkv_bias = sa_block.attn.qkv.bias.data
-                pwca_attention.q_proj.bias.data = qkv_bias[:dim].clone()
-                pwca_attention.k_proj.bias.data = qkv_bias[dim:2*dim].clone()
-                pwca_attention.v_proj.bias.data = qkv_bias[2*dim:3*dim].clone()
+            # Residual connection with stochastic depth
+            x1 = x1 + sa_block.drop_path(pwca_output)
             
-            # Copy projection weights
-            pwca_attention.proj.weight.data = sa_block.attn.proj.weight.data.clone()
-            if sa_block.attn.proj.bias is not None:
-                pwca_attention.proj.bias.data = sa_block.attn.proj.bias.data.clone()
-            
-            # Apply layer norm
-            x1 = sa_block.norm1(x1)
-            x2 = sa_block.norm1(x2)
-            
-            # PWCA attention
-            x1 = x1 + sa_block.drop_path(pwca_attention(x1, x2))
-            
-            # FFN (same as SA)
+            # Apply MLP (shared with SA)
             x1 = x1 + sa_block.drop_path(sa_block.mlp(sa_block.norm2(x1)))
         
         return x1
     
+    def _compute_pwca_attention(self, attn_module, x1: torch.Tensor, x2: torch.Tensor) -> torch.Tensor:
+        """
+        Compute PWCA attention using SA attention module parameters directly.
+        
+        This avoids weight copying by reusing the SA attention module's QKV projection
+        and computing cross-attention between x1 queries and combined x1+x2 key-values.
+        
+        Args:
+            attn_module: The self-attention module from SA block
+            x1: Target image embeddings of shape (B, N, D)
+            x2: Distractor image embeddings of shape (B, N, D)
+            
+        Returns:
+            PWCA attention output for x1 of shape (B, N, D)
+        """
+        B, N, D = x1.shape
+        
+        # Use SA module's QKV projection to get Q, K, V for both images
+        # For x1 (target image)
+        qkv1 = attn_module.qkv(x1).reshape(B, N, 3, attn_module.num_heads, attn_module.head_dim).permute(2, 0, 3, 1, 4)
+        q1, k1, v1 = qkv1.unbind(0)  # Each: (B, num_heads, N, head_dim)
+        
+        # For x2 (distractor image)
+        qkv2 = attn_module.qkv(x2).reshape(B, N, 3, attn_module.num_heads, attn_module.head_dim).permute(2, 0, 3, 1, 4)
+        q2, k2, v2 = qkv2.unbind(0)  # Each: (B, num_heads, N, head_dim)
+        
+        # PWCA: Use query from x1, but combined key-value from both x1 and x2
+        k_combined = torch.cat([k1, k2], dim=2)  # (B, num_heads, 2N, head_dim)
+        v_combined = torch.cat([v1, v2], dim=2)  # (B, num_heads, 2N, head_dim)
+        
+        # Compute attention scores: q1 @ k_combined^T
+        attn = (q1 @ k_combined.transpose(-2, -1)) * attn_module.scale  # (B, num_heads, N, 2N)
+        attn = torch.softmax(attn, dim=-1)
+        attn = attn_module.attn_drop(attn)
+        
+        # Apply attention to combined values
+        out = (attn @ v_combined).transpose(1, 2).reshape(B, N, D)  # (B, N, D)
+        
+        # Apply output projection (shared with SA)
+        out = attn_module.proj(out)
+        out = attn_module.proj_drop(out)
+        
+        return out
+    
     def _compute_attention_rollout(self, attention_weights: List[torch.Tensor]) -> torch.Tensor:
         """
-        Compute attention rollout across all SA layers.
+        Compute attention rollout across all SA layers with optional caching.
+        
+        The attention rollout computation can be expensive, especially during training.
+        This method implements caching based on attention weight hashes to avoid
+        redundant computations for similar attention patterns.
         
         Args:
             attention_weights: List of attention weight tensors from each SA layer
@@ -296,12 +388,86 @@ class DualAttentionModel(nn.Module):
             device = next(self.parameters()).device
             return torch.eye(N, device=device).unsqueeze(0).repeat(B, 1, 1)
         
-        return compute_attention_rollout(
+        # Try to use cache if enabled and we're in eval mode
+        if self.cache_attention_rollout and not self.training:
+            cache_key = self._compute_attention_cache_key(attention_weights)
+            if cache_key in self._attention_cache:
+                self._cache_hits += 1
+                return self._attention_cache[cache_key]
+            else:
+                self._cache_misses += 1
+        
+        # Compute attention rollout
+        rollout_result = compute_attention_rollout(
             attention_weights,
             head_fusion="mean",
             discard_ratio=0.0,  # No discarding for training stability
             add_residual=True
         )
+        
+        # Cache the result if caching is enabled and we're in eval mode
+        if self.cache_attention_rollout and not self.training:
+            # Limit cache size to prevent memory issues
+            if len(self._attention_cache) < 1000:  # Configurable limit
+                self._attention_cache[cache_key] = rollout_result.detach()
+        
+        return rollout_result
+    
+    def _compute_attention_cache_key(self, attention_weights: List[torch.Tensor]) -> str:
+        """
+        Compute a hash key for attention weights to enable caching.
+        
+        This creates a lightweight hash based on attention weight statistics
+        rather than the full tensors to balance cache effectiveness with memory usage.
+        
+        Args:
+            attention_weights: List of attention weight tensors
+            
+        Returns:
+            String hash key for caching
+        """
+        import hashlib
+        
+        # Create hash based on attention statistics rather than full tensors
+        hash_components = []
+        
+        for i, attn in enumerate(attention_weights):
+            # Use attention statistics for hashing (more memory efficient than full tensors)
+            attn_mean = attn.mean().item()
+            attn_std = attn.std().item()
+            attn_max = attn.max().item()
+            attn_min = attn.min().item()
+            
+            # Include layer index and basic statistics
+            hash_components.extend([
+                f"layer_{i}",
+                f"mean_{attn_mean:.6f}",
+                f"std_{attn_std:.6f}", 
+                f"max_{attn_max:.6f}",
+                f"min_{attn_min:.6f}"
+            ])
+        
+        # Create hash from components
+        hash_string = "_".join(hash_components)
+        return hashlib.md5(hash_string.encode()).hexdigest()
+    
+    def clear_attention_cache(self):
+        """Clear the attention rollout cache and reset statistics."""
+        self._attention_cache.clear()
+        self._cache_hits = 0
+        self._cache_misses = 0
+    
+    def get_cache_stats(self) -> dict:
+        """Get attention cache statistics for monitoring."""
+        total_requests = self._cache_hits + self._cache_misses
+        hit_rate = self._cache_hits / max(1, total_requests)
+        
+        return {
+            'cache_hits': self._cache_hits,
+            'cache_misses': self._cache_misses,
+            'hit_rate': hit_rate,
+            'cache_size': len(self._attention_cache)
+        }
     
     def extract_features(self, x: torch.Tensor) -> torch.Tensor:
         """

@@ -17,20 +17,46 @@ def compute_attention_rollout(attention_weights: List[torch.Tensor],
                             discard_ratio: float = 0.0,
                             add_residual: bool = True) -> torch.Tensor:
     """
-    Compute attention rollout across multiple layers.
+    Compute attention rollout across multiple transformer layers.
     
-    Tracks how information propagates from input tokens to higher layers
-    by recursively computing attention across all previous layers.
+    **Attention Rollout Theory:**
+    In deep transformers, attention weights in later layers don't directly show 
+    which input tokens are important because embeddings become increasingly mixed.
+    Attention rollout solves this by recursively multiplying attention matrices
+    across layers to track information flow from input to output.
+    
+    **Mathematical Formulation:**
+    Given attention matrices S₁, S₂, ..., Sₗ from L layers:
+    1. Normalize each layer: S̄ₗ = αSₗ + (1-α)I (typically α=0.5)
+    2. Compute rollout: Ŝ = S̄ₗ ⊗ S̄ₗ₋₁ ⊗ ... ⊗ S̄₁
+    3. Result: Ŝ[i,j] = accumulated attention from token j to token i
+    
+    **Key Insights:**
+    - Ŝ[0, :] shows which input tokens the CLS token attends to after all layers
+    - Residual connections (identity matrix) account for skip connections
+    - Head fusion combines multi-head attention into single matrix per layer
+    - Optional discarding removes weak attention paths for visualization
+    
+    **Usage in GLCA:**
+    The first row Ŝ[0, 1:] (CLS attention to patches) identifies the most
+    discriminative regions for fine-grained recognition tasks.
     
     Args:
-        attention_weights: List of attention weight tensors from each layer,
-                          each of shape (B, num_heads, N, N)
-        head_fusion: How to fuse attention heads ("mean", "max", "min")
-        discard_ratio: Ratio of lowest attention paths to discard
-        add_residual: Whether to add residual connections (identity matrix)
+        attention_weights: List of attention matrices from each layer
+                          Shape: [(B, num_heads, N, N), ...] for L layers
+        head_fusion: Strategy to combine attention heads:
+                    - "mean": Average across heads (most common)
+                    - "max": Maximum across heads (emphasizes strongest attention)
+                    - "min": Minimum across heads (conservative estimate)
+        discard_ratio: Fraction of weakest attention paths to zero out (0.0-1.0)
+                      Used mainly for visualization, typically 0.0 for training
+        add_residual: Whether to add identity matrix (residual connections)
+                     Should be True to properly model transformer residuals
         
     Returns:
-        Accumulated attention tensor of shape (B, N, N)
+        Accumulated attention tensor of shape (B, N, N) where:
+        - result[b, i, j] = accumulated attention from token j to token i
+        - result[b, 0, :] = CLS token attention to all tokens (most important)
     """
     if not attention_weights:
         raise ValueError("attention_weights list cannot be empty")

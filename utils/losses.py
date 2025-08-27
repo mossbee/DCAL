@@ -14,15 +14,47 @@ import math
 
 class UncertaintyWeightedLoss(nn.Module):
     """
-    Uncertainty-based loss weighting for multi-task learning.
+    Uncertainty-based loss weighting for multi-task learning in dual attention models.
     
-    Automatically balances losses from different attention mechanisms
-    using learnable uncertainty parameters as proposed by Kendall et al.
+    This implements the uncertainty weighting approach from Kendall et al. (2018)
+    "Multi-Task Learning Using Uncertainty to Weigh Losses for Scene Geometry and Semantics"
+    adapted for the dual cross-attention architecture.
     
-    The total loss is computed as:
-    L_total = 1/2 * (1/exp(w1)*L_SA + 1/exp(w2)*L_GLCA + 1/exp(w3)*L_PWCA + w1 + w2 + w3)
+    **Core Innovation:**
+    Instead of manually tuning loss weights, this method learns optimal weights
+    automatically by modeling the uncertainty (noise) in each task. Tasks with
+    higher uncertainty get lower weights, while tasks with lower uncertainty
+    get higher weights.
     
-    where w1, w2, w3 are learnable parameters that automatically balance the losses.
+    **Mathematical Formulation:**
+    For tasks with losses L₁, L₂, L₃ and uncertainty parameters σ₁², σ₂², σ₃²:
+    
+    L_total = 1/2 * Σᵢ (1/σᵢ² * Lᵢ + log(σᵢ²))
+    
+    In practice, we parameterize with log-variance: wᵢ = log(σᵢ²)
+    So: L_total = 1/2 * Σᵢ (e^(-wᵢ) * Lᵢ + wᵢ)
+    
+    **Intuition:**
+    - e^(-wᵢ) acts as adaptive weight (precision = 1/variance)
+    - wᵢ term prevents weights from going to infinity
+    - High uncertainty → large wᵢ → small e^(-wᵢ) → low task weight
+    - Low uncertainty → small wᵢ → large e^(-wᵢ) → high task weight
+    
+    **Application to Dual Attention:**
+    - L_SA: Self-attention branch loss (baseline performance)
+    - L_GLCA: Global-local cross-attention loss (spatial discrimination)
+    - L_PWCA: Pair-wise cross-attention loss (regularization, training only)
+    
+    **Benefits:**
+    1. **Automatic Balancing**: No manual hyperparameter tuning needed
+    2. **Adaptive Weighting**: Weights adjust during training based on task difficulty
+    3. **Principled Approach**: Grounded in Bayesian uncertainty estimation
+    4. **Training Stability**: Prevents any single loss from dominating
+    
+    **Usage Notes:**
+    - Initialize log-variance parameters to 0 (equal weighting initially)
+    - Monitor weights during training to understand task relationships
+    - PWCA loss only included during training (disabled at inference)
     """
     
     def __init__(self, num_tasks: int = 3, init_log_vars: Optional[List[float]] = None):

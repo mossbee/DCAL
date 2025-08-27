@@ -17,14 +17,39 @@ from utils.attention_rollout import get_patch_attention_rollout
 
 class GlobalLocalCrossAttention(nn.Module):
     """
-    Global-Local Cross-Attention mechanism.
+    Global-Local Cross-Attention (GLCA) mechanism for fine-grained recognition.
     
-    Computes cross-attention between selected local query vectors (high-response regions)
-    and global key-value pairs. Uses attention rollout to identify important regions.
+    This module implements the GLCA mechanism from "Dual Cross-Attention Learning for 
+    Fine-Grained Visual Categorization and Object Re-Identification".
     
-    Key insight: Instead of treating all queries equally, GLCA selects only the most
-    discriminative regions (top-k based on attention rollout) as queries and computes
-    cross-attention with the full global key-value set.
+    **Core Innovation:**
+    Unlike standard self-attention that treats all spatial locations equally, GLCA 
+    selectively focuses on the most discriminative regions by using attention rollout
+    to identify high-response areas, then computes cross-attention between these 
+    selected local queries and global key-value pairs.
+    
+    **Mathematical Formulation:**
+    GLCA computes: f_GLCA(Q^l, K^g, V^g) = softmax(Q^l(K^g)^T/√d)V^g
+    where:
+    - Q^l: Selected local queries from top-k regions (based on attention rollout)
+    - K^g, V^g: Global key-value pairs from all spatial locations
+    - Top-k selection uses accumulated attention weights from self-attention layers
+    
+    **Attention Rollout Integration:**
+    The attention rollout Ŝ_i = S̄_i ⊗ S̄_{i-1} ⊗ ... ⊗ S̄_1 tracks how information
+    flows from input patches to higher layers. The first row Ŝ_i[0, :] represents
+    CLS token attention to all patches, used for selecting discriminative regions.
+    
+    **Key Benefits:**
+    1. **Spatial Selectivity**: Focuses computation on most important regions
+    2. **Global Context**: Selected regions attend to all spatial locations
+    3. **Fine-grained Discrimination**: Enhances subtle feature differences
+    4. **Efficiency**: Reduces computational cost by using fewer queries
+    
+    **Usage in Architecture:**
+    - Applied after self-attention layers (uses their attention rollout)
+    - Typically M=1 GLCA block per model
+    - Top-k ratio: R=10% for FGVC, R=30% for Re-ID tasks
     """
     
     def __init__(self, dim: int, num_heads: int = 8, qkv_bias: bool = False,
@@ -75,12 +100,31 @@ class GlobalLocalCrossAttention(nn.Module):
         """
         Forward pass of global-local cross-attention.
         
+        **Algorithm Overview:**
+        1. Extract CLS token attention to patches from attention rollout
+        2. Select top-k patches with highest attention scores
+        3. Compute Q, K, V projections for all tokens
+        4. Extract queries for selected positions (Q^l) 
+        5. Compute cross-attention: Q^l @ K^g^T, apply to V^g
+        6. Update selected positions with GLCA output, keep others unchanged
+        
+        **Attention Rollout Usage:**
+        The accumulated_attention matrix contains the rollout attention from all
+        previous self-attention layers. We use accumulated_attention[0, 1:] which
+        represents how much the CLS token attends to each patch after propagating
+        through all layers. This gives us the most discriminative regions.
+        
         Args:
-            x: Input tensor of shape (B, N, D) where N includes CLS token
-            accumulated_attention: Attention rollout weights of shape (B, N, N)
+            x: Input token embeddings of shape (B, N, D) where:
+               - B: batch size
+               - N: sequence length (num_patches + 1 for CLS token)  
+               - D: embedding dimension
+            accumulated_attention: Attention rollout matrix of shape (B, N, N) where:
+               - accumulated_attention[b, 0, 1:] contains CLS attention to patches
+               - Used to identify top-k most important patches
             
         Returns:
-            Output tensor of shape (B, N, D)
+            Output tensor of shape (B, N, D) with selected positions updated by GLCA
         """
         B, N, D = x.shape
         

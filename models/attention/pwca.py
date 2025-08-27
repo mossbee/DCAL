@@ -17,13 +17,47 @@ import random
 
 class PairWiseCrossAttention(nn.Module):
     """
-    Pair-Wise Cross-Attention mechanism.
+    Pair-Wise Cross-Attention (PWCA) mechanism for attention regularization.
     
-    Computes attention between query of target image and combined key-value
-    from both target and distractor images. Only used during training.
+    This module implements the PWCA mechanism from "Dual Cross-Attention Learning for 
+    Fine-Grained Visual Categorization and Object Re-Identification".
     
-    The attention mechanism: f_PWCA(Q1, K_c, V_c) = softmax(Q1 * K_c^T / √d) * V_c
-    where K_c = [K1; K2] and V_c = [V1; V2] are concatenated key-value pairs.
+    **Core Innovation:**
+    PWCA acts as a novel regularization technique that increases training difficulty
+    by contaminating the attention computation with a distractor image. This forces
+    the network to learn more discriminative features and reduces overfitting to
+    sample-specific patterns.
+    
+    **Mathematical Formulation:**
+    PWCA computes: f_PWCA(Q₁, K_c, V_c) = softmax(Q₁K_c^T/√d)V_c
+    where:
+    - Q₁: Query vectors from target image
+    - K_c = [K₁; K₂]: Concatenated keys from target and distractor images  
+    - V_c = [V₁; V₂]: Concatenated values from target and distractor images
+    - Softmax normalizes over 2N positions (N from each image)
+    
+    **Attention Contamination Process:**
+    1. Target image query Q₁ computes attention to both target and distractor
+    2. Attention scores are normalized across all 2N positions jointly
+    3. This "contaminates" target attention with distractor information
+    4. Network must work harder to focus on correct discriminative regions
+    
+    **Training Benefits:**
+    1. **Regularization**: Prevents overfitting to sample-specific features
+    2. **Robustness**: Improves generalization by adding controlled noise
+    3. **Discrimination**: Forces discovery of more discriminative regions
+    4. **Efficiency**: No inference cost (training-only mechanism)
+    
+    **Usage in Architecture:**
+    - Only active during training (disabled at inference)
+    - Shares weights with self-attention branch (T=12 PWCA blocks)  
+    - Uses random pair sampling from training batch
+    - Applied to all transformer layers simultaneously
+    
+    **Distractor Sampling Strategies:**
+    - Random: Simple random shuffling of batch
+    - Hard negative: Sample from different classes
+    - Mixed: Combination of same/different class sampling
     """
     
     def __init__(self, dim: int, num_heads: int = 8, qkv_bias: bool = False,
@@ -72,12 +106,31 @@ class PairWiseCrossAttention(nn.Module):
         """
         Forward pass of pair-wise cross-attention.
         
+        **Algorithm Overview:**
+        1. Compute queries Q₁ from target image x1
+        2. Compute keys K₁, K₂ and values V₁, V₂ from both images
+        3. Concatenate keys and values: K_c = [K₁; K₂], V_c = [V₁; V₂]
+        4. Compute attention: Q₁ @ K_c^T (target queries attend to both images)
+        5. Apply softmax normalization across all 2N positions
+        6. Apply attention to combined values: attention @ V_c
+        
+        **Key Insight:**
+        The critical aspect is that attention normalization happens across the
+        combined 2N positions, meaning target queries compete for attention
+        between target and distractor tokens. This contamination makes training
+        harder and forces more discriminative feature learning.
+        
         Args:
-            x1: Target image embeddings of shape (B, N, D)
-            x2: Distractor image embeddings of shape (B, N, D)
-            
+            x1: Target image token embeddings of shape (B, N, D) where:
+                - B: batch size
+                - N: sequence length (patches + CLS token)
+                - D: embedding dimension
+            x2: Distractor image token embeddings of shape (B, N, D)
+                - Same shape as x1, typically from randomly sampled batch image
+                
         Returns:
-            Output tensor for target image of shape (B, N, D)
+            Enhanced target image embeddings of shape (B, N, D)
+            - Only x1 is updated, x2 serves purely as distractor
         """
         B, N, D = x1.shape
         
