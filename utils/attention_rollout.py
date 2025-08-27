@@ -197,8 +197,22 @@ def get_patch_attention_rollout(rollout_attention: torch.Tensor) -> torch.Tensor
     Returns:
         Patch attention of shape (B, N-1) representing CLS attention to patches only
     """
+    # Validate input shape
+    if rollout_attention.dim() != 3:
+        raise ValueError(f"Expected 3D tensor (B, N, N), got shape {rollout_attention.shape}")
+    
+    B, N1, N2 = rollout_attention.shape
+    if N1 != N2:
+        raise ValueError(f"Expected square attention matrix (B, N, N), got shape {rollout_attention.shape}")
+    
     # Extract CLS attention to patches (excluding CLS token itself)
     patch_attention = rollout_attention[:, 0, 1:]  # (B, N-1)
+    
+    # Validate output shape
+    expected_shape = (B, N1 - 1)
+    if patch_attention.shape != expected_shape:
+        raise ValueError(f"Output shape {patch_attention.shape} doesn't match expected {expected_shape}")
+    
     return patch_attention
 
 

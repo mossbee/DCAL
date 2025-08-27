@@ -182,6 +182,14 @@ class GlobalLocalCrossAttention(nn.Module):
         num_patches = N - 1  # Exclude CLS token
         k = max(1, int(num_patches * self.top_k_ratio))
         
+        # Validate cls_attention shape
+        expected_cls_shape = (B, N - 1)
+        if cls_attention.shape != expected_cls_shape:
+            raise ValueError(
+                f"cls_attention shape {cls_attention.shape} doesn't match expected {expected_cls_shape}. "
+                f"This suggests an issue with attention rollout computation."
+            )
+        
         # Find top-k patches based on CLS attention (excluding CLS token itself)
         _, top_indices = torch.topk(cls_attention, k, dim=-1)  # (B, K)
         
