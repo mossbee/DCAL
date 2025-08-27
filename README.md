@@ -2,7 +2,7 @@
 
 This repository contains a **replication implementation** of the dual cross-attention learning approach proposed in the paper:
 
-**Zhu, H., Ke, W., Li, D., Liu, J., Tian, L., & Shan, Y. (2022). Dual cross-attention learning for fine-grained visual categorization and object re-identification. In Proceedings of the IEEE/CVF conference on computer vision and pattern recognition (pp. 4692-4702).**
+**Zhu, H., Ke, W., Li, D., Liu, J., Tian, L., & Shan, Y. (2022). Dual cross-attention learning for fine-grained visual categorization and object re-identification.**
 
 ```bibtex
 @inproceedings{zhu2022dual,
