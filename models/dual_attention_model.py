@@ -431,6 +431,11 @@ class DualAttentionModel(nn.Module):
         # Create hash based on attention statistics rather than full tensors
         hash_components = []
         
+        # Include batch size to prevent cache mismatches
+        if attention_weights:
+            batch_size = attention_weights[0].size(0)
+            hash_components.append(f"batch_{batch_size}")
+        
         for i, attn in enumerate(attention_weights):
             # Use attention statistics for hashing (more memory efficient than full tensors)
             attn_mean = attn.mean().item()
