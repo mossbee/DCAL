@@ -9,7 +9,7 @@ seed: 42
 
 # Model settings
 model:
-  backbone_name: 'deit_small_patch16_224'  # Use DeiT as per paper
+  backbone_name: 'vit_base_r50_s16_224.orig_in21k'  # Use DeiT as per paper
   num_classes: 200
   embed_dim: 384
   num_heads: 6
