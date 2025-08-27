@@ -163,6 +163,12 @@ def create_optimizer(model: nn.Module, config) -> torch.optim.Optimizer:
     learning_rate = get_value(training_config, 'learning_rate', 1e-4)
     weight_decay = get_value(training_config, 'weight_decay', 1e-4)
     
+    # Ensure numerical parameters are floats (in case they're loaded as strings from YAML)
+    if isinstance(learning_rate, str):
+        learning_rate = float(learning_rate)
+    if isinstance(weight_decay, str):
+        weight_decay = float(weight_decay)
+    
     if optimizer_name == 'adamw':
         optimizer = torch.optim.AdamW(
             model.parameters(),
@@ -262,10 +268,14 @@ def main():
     num_epochs = get_value(training_config, 'num_epochs', 100)
     
     if scheduler_type == 'cosine':
+        eta_min = get_value(training_config, 'min_lr', 1e-6)
+        # Ensure eta_min is a float (in case it's loaded as string from YAML)
+        if isinstance(eta_min, str):
+            eta_min = float(eta_min)
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
             optimizer, 
             T_max=num_epochs,
-            eta_min=get_value(training_config, 'min_lr', 1e-6)
+            eta_min=eta_min
         )
     elif scheduler_type == 'multistep':
         scheduler = torch.optim.lr_scheduler.MultiStepLR(
