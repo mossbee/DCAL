@@ -1,14 +1,40 @@
 # Dual Cross-Attention Learning for Fine-Grained Visual Categorization and Object Re-Identification
 
-This repository implements the dual cross-attention learning approach proposed in the paper for fine-grained visual categorization (FGVC) and object re-identification (Re-ID) tasks.
+This repository contains a **replication implementation** of the dual cross-attention learning approach proposed in the paper:
+
+**Zhu, H., Ke, W., Li, D., Liu, J., Tian, L., & Shan, Y. (2022). Dual cross-attention learning for fine-grained visual categorization and object re-identification. In Proceedings of the IEEE/CVF conference on computer vision and pattern recognition (pp. 4692-4702).**
+
+```bibtex
+@inproceedings{zhu2022dual,
+  title={Dual cross-attention learning for fine-grained visual categorization and object re-identification},
+  author={Zhu, Haowei and Ke, Wenjing and Li, Dong and Liu, Ji and Tian, Lu and Shan, Yi},
+  booktitle={Proceedings of the IEEE/CVF conference on computer vision and pattern recognition},
+  pages={4692--4702},
+  year={2022}
+}
+```
 
 ## Overview
 
-The implementation includes:
-- **Global-Local Cross-Attention (GLCA)**: Enhances interactions between global images and local high-response regions
-- **Pair-Wise Cross-Attention (PWCA)**: Regularizes attention learning using image pairs as distractors
+Since the authors did not provide an official codebase, this is an independent implementation that replicates the key components of their approach:
+
+- **Global-Local Cross-Attention (GLCA)**: Enhances interactions between global images and local high-response regions using attention rollout
+- **Pair-Wise Cross-Attention (PWCA)**: Regularizes attention learning using image pairs as distractors during training
 - Support for both FGVC and Re-ID tasks with shared architecture
 - Integration with timm backbones (ViT, DeiT)
+
+GLCA                       |  PWCA
+:-------------------------:|:-------------------------:
+![](figures/glca-v2.png)  |  ![](figures/pwca-v2.png)
+
+## Implementation Details
+
+This replication follows the paper's methodology:
+
+- **Multi-task learning architecture**: Coordinates SA, GLCA, and PWCA with uncertainty-based loss weighting
+- **Attention rollout**: Used to identify high-response regions for GLCA
+- **Training strategy**: PWCA is only used during training and removed for inference
+- **Loss balancing**: Implements the uncertainty-based weighting strategy from Kendall et al. (2018)
 
 ## Project Structure
 
@@ -69,8 +95,20 @@ python scripts/train_fgvc.py --config configs/fgvc/cub200.yaml
 python scripts/train_reid.py --config configs/reid/veri776.yaml
 ```
 
+## Experimental Setup
 
+This implementation follows the experimental settings described in the paper:
+
+**FGVC Datasets**: CUB-200-2011, Stanford Cars, FGVC-Aircraft
+**Re-ID Datasets**: Market1501, DukeMTMC-ReID, MSMT17, VeRi-776
+
+**Architecture**: L=12 SA blocks, M=1 GLCA block, T=12 PWCA blocks
+**Training**: Uncertainty-based loss weighting, cosine learning rate decay
 
 ## Requirements
 
 See `requirements.txt` for detailed dependencies.
+
+## Disclaimer
+
+This is an independent replication of the research paper. While efforts have been made to faithfully reproduce the methodology described in the paper, there may be implementation differences from the original work. Please refer to the original paper for the complete theoretical framework and experimental details.
